@@ -4,7 +4,6 @@ import json
 import math
 import urllib
 import asyncio
-import pprint as pp
 
 from pathlib import Path
 from typing import Dict, List
@@ -91,6 +90,7 @@ async def scrape_jobs(job_keys: List[str]):
             jobKey_scraped = [job["jobkey"] for job in jobDetail_scraped]
             jobKeys_left = [job for job in job_keys if job not in jobKey_scraped]
         job_keys = jobKeys_left
+        log.info(f"Scraped jobs: {len(jobDetail_scraped)}, remaining jobs: {len(jobKeys_left)}.")
     
     urls = []
     for job_key in job_keys:
