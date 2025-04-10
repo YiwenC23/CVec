@@ -104,12 +104,11 @@ async def scrape_jobs(job_keys: List[str]):
                 job_key = job_key_to_url[job_url]
                 job_detail["jobkey"] = job_key
                 jobDetail_scraped.append(job_detail)
-                remaining_jobs = len(job_keys) - len(jobDetail_scraped)
                 
                 with open(JOB_DETAILS_FILE, "w", encoding="utf-8") as f:
                     json.dump(jobDetail_scraped, f, indent=4, ensure_ascii=False)
                 
-                log.info(f"Scraped jobs: {len(jobDetail_scraped)}; Remaining jobs: {remaining_jobs}")
+                log.info(f"Scraped jobs: {len(jobDetail_scraped)}; Remaining jobs: {len(jobKey_remaining)+1}")
         else:
             log.error(f"Failed to scrape {result.api_response.config['url']}, got: {result.message}")
             await asyncio.sleep(10)
