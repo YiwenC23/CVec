@@ -107,7 +107,6 @@ async def scrape_jobs(job_keys: List[str]):
                 job_url = result.config["url"]
                 job_key = job_key_to_url[job_url]
                 job_detail["jobkey"] = job_key
-                job_detail.sort(key=lambda r: r["jobkey"])
                 jobDetail_scraped.append(job_detail)
                 remaining_jobs = len(job_keys) - len(jobDetail_scraped)
                 
