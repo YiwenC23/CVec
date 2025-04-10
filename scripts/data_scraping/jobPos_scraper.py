@@ -81,6 +81,7 @@ async def scrape_jobs(job_keys: List[str]):
         with open(JOB_DETAILS_FILE, "r") as f:
             jobDetail_scraped = json.load(f)
             jobKey_scraped = [job["jobkey"] for job in jobDetail_scraped]
+            all_jobKeys = job_keys.copy()
             jobKey_remaining = [key for key in job_keys if key not in jobKey_scraped]
         job_keys = jobKey_remaining
         log.info(f"Scraped jobs: {len(jobDetail_scraped)}; Remaining jobs: {len(jobKey_remaining)}")
@@ -108,7 +109,7 @@ async def scrape_jobs(job_keys: List[str]):
                 with open(JOB_DETAILS_FILE, "w", encoding="utf-8") as f:
                     json.dump(jobDetail_scraped, f, indent=4, ensure_ascii=False)
                 
-                log.info(f"Scraped jobs: {len(jobDetail_scraped)}; Remaining jobs: {len(jobKey_remaining)-1}")
+                log.info(f"Scraped jobs: {len(jobDetail_scraped)}; Remaining jobs: {len(all_jobKeys) - len(jobDetail_scraped)}")
         else:
             log.error(f"Failed to scrape {result.api_response.config['url']}, got: {result.message}")
             await asyncio.sleep(10)
