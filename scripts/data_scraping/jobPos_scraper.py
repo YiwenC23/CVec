@@ -61,20 +61,16 @@ async def scrape_search(url: str, max_results: int = 1000) -> List[Dict]:
 
 
 async def parse_job_page(response: ScrapeApiResponse):
-    try:
-        data = re.findall(r"_initialData=(\{.+?\});", response.content)
-        data = json.loads(data[0])
-        data = data["jobInfoWrapperModel"]["jobInfoModel"]
-        job_details = {
-            "description": data["sanitizedJobDescription"],
-            **data["jobMetadataHeaderModel"],
-            **(data["jobTagModel"] or {}),
-            **data["jobInfoHeaderModel"],
-        }
-        return job_details
-    except Exception as e:
-        log.error(f"Failed to parse {response.config['url']}: {e}")
-        return None
+    data = re.findall(r"_initialData=(\{.+?\});", response.content)
+    data = json.loads(data[0])
+    data = data["jobInfoWrapperModel"]["jobInfoModel"]
+    job_details = {
+        "description": data["sanitizedJobDescription"],
+        **data["jobMetadataHeaderModel"],
+        **(data["jobTagModel"] or {}),
+        **data["jobInfoHeaderModel"],
+    }
+    return job_details
 
 
 async def scrape_jobs(job_keys: List[str]):
@@ -85,9 +81,9 @@ async def scrape_jobs(job_keys: List[str]):
         with open(JOB_DETAILS_FILE, "r") as f:
             jobDetail_scraped = json.load(f)
             jobKey_scraped = [job["jobkey"] for job in jobDetail_scraped]
-            jobKeys_left = [key for key in job_keys if key not in jobKey_scraped]
-        job_keys = jobKeys_left
-        log.info(f"Scraped jobs: {len(jobDetail_scraped)}; Remaining jobs: {len(jobKeys_left)}")
+            jobKey_remaining = [key for key in job_keys if key not in jobKey_scraped]
+        job_keys = jobKey_remaining
+        log.info(f"Scraped jobs: {len(jobDetail_scraped)}; Remaining jobs: {len(jobKey_remaining)}")
     else:
         jobDetail_scraped = []
     
@@ -133,8 +129,8 @@ async def main():
         with open(SEARCH_RESULTS_FILE, "w", encoding="utf-8") as f:
             json.dump(search_results, f, indent=4, ensure_ascii=False)
         
-        jobKey_list = [job["jobkey"] for job in search_results if "jobkey" in job]
-        job_keys = [key for key in jobKey_list if jobKey_list.count(key) == 1]
+        job_keys = [job["jobkey"] for job in search_results if "jobkey" in job]
+        job_keys = list(set(job_keys))
         
         with open(JOB_KEYS_FILE, "w", encoding="utf-8") as f:
             json.dump(job_keys, f, indent=4, ensure_ascii=False)
@@ -164,11 +160,11 @@ if __name__ == "__main__":
     #* File path constants
     BASE_DIR = Path(__file__).resolve().parents[2]
     JOB_KEYS_FILE = os.path.join(BASE_DIR, "data/raw_data/data_science/indeed_jobKeys.json")
-    SEARCH_RESULTS_FILE = os.path.join(BASE_DIR, "data/raw_data/data_science/indeed_data_science_results.json")
-    JOB_DETAILS_FILE = os.path.join(BASE_DIR, "data/raw_data/data_science/indeed_data_science_jobs_detail.json")
+    SEARCH_RESULTS_FILE = os.path.join(BASE_DIR, "data/raw_data/data_science/indeed_ds_search_results.json")
+    JOB_DETAILS_FILE = os.path.join(BASE_DIR, "data/raw_data/data_science/indeed_ds_jobs_detail.json")
     
     #* Scrapfly setup
-    SCRAPFLY = ScrapflyClient(key=os.environ["SCRAPFLY_API_KEY"], DEFAULT_READ_TIMEOUT=150)
+    SCRAPFLY = ScrapflyClient(key=os.environ["SCRAPFLY_API_KEY"])
     BASE_CONFIG = {
         "asp": True,
         "cost_budget": 1000,
