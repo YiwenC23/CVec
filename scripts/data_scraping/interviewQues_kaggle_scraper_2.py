@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 import json
 from webdriver_manager.chrome import ChromeDriverManager
 import os
+import csv
 
 def parse_discussion_content(links_csv, output_json):
     # Configure Chrome options
@@ -29,14 +30,12 @@ def parse_discussion_content(links_csv, output_json):
         links_csv_path = os.path.join(script_dir, links_csv)
         
         # Read the CSV file manually since we're removing pandas dependency
-        import csv
         links = []
         with open(links_csv_path, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 links.append(row)
         
-        print(f"Loaded {len(links)} links from {links_csv_path}")
     except Exception as e:
         print(f"Error loading CSV: {e}")
         driver.quit()
@@ -56,17 +55,14 @@ def parse_discussion_content(links_csv, output_json):
                 
                 # Load the discussion page
                 driver.get(link)
-                print(f"  Loading URL: {link}")
                 
                 # Wait for content to load
                 time.sleep(5)
                 
                 # Wait for the main content to appear
                 try:
-                    WebDriverWait(driver, 15).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, ".sc-bqEkgP.carXiy"))
-                    )
-                    print("  Content loaded successfully")
+                    WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".sc-bqEkgP.carXiy")))
+                    print("Content loaded successfully")
                 except Exception as e:
                     print(f"  Timeout waiting for content: {e}")
                 
@@ -152,9 +148,7 @@ def parse_discussion_content(links_csv, output_json):
                 }
                 
                 all_discussions.append(discussion_data)
-                print(f"  Extracted content with {len(content_items)} content items")
                 
-                # Sleep between requests to avoid overloading the server
                 time.sleep(2)
                 
             except Exception as e:
@@ -171,7 +165,6 @@ def parse_discussion_content(links_csv, output_json):
         print("Browser closed")
 
 def save_results(all_discussions, output_json):
-    """Save the results to JSON file"""
     # Create output path relative to script directory
     script_dir = os.path.dirname(os.path.abspath(__file__))
     output_json_path = os.path.join(script_dir, output_json)
@@ -182,7 +175,7 @@ def save_results(all_discussions, output_json):
     print(f"Saved complete structured data to {output_json_path}")
 
 if __name__ == "__main__":
-    input_csv = "kaggle_sublinks.csv"  # CSV file with links
-    output_json = "kaggle_discussion_content.json"  # Where to save the parsed content
+    input_csv = "kaggle_sublinks.csv"
+    output_json = "kaggle_discussion_content.json"
     
     parse_discussion_content(input_csv, output_json)

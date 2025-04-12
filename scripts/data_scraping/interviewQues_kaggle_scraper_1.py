@@ -12,7 +12,7 @@ import re
 from urllib.parse import urljoin
 from webdriver_manager.chrome import ChromeDriverManager
 
-def scrape_kaggle_search(url, min_upvotes=20, max_pages=30):
+def scrape_kaggle_search(url, min_upvotes=1, max_pages=100):
     # Configure Chrome options
     options = Options()
     options.add_argument("--headless") 
@@ -30,9 +30,7 @@ def scrape_kaggle_search(url, min_upvotes=20, max_pages=30):
         # Load the initial page
         print(f"Loading URL: {url}")
         driver.get(url)
-        
-        # Wait for initial content to load
-        print("Waiting for page to load...")
+
         time.sleep(5)
         
         while current_page <= max_pages:
@@ -40,9 +38,7 @@ def scrape_kaggle_search(url, min_upvotes=20, max_pages=30):
             
             # Wait for list items to appear
             try:
-                WebDriverWait(driver, 15).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "li.MuiListItem-root"))
-                )
+                WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.CSS_SELECTOR, "li.MuiListItem-root")))
                 print("List items loaded successfully")
             except Exception as e:
                 print(f"Timeout waiting for list items: {e}")
@@ -58,7 +54,6 @@ def scrape_kaggle_search(url, min_upvotes=20, max_pages=30):
                 # Scroll down to bottom
                 driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
                 
-                # Wait to load page
                 time.sleep(2)
                 
                 # Calculate new scroll height and compare with last scroll height
@@ -71,10 +66,8 @@ def scrape_kaggle_search(url, min_upvotes=20, max_pages=30):
                     scroll_attempts = 0
                     last_height = new_height
             
-            # Get the fully rendered HTML
+            # Get the fully rendered HTML and parse with BeautifulSoup
             html = driver.page_source
-            
-            # Parse with BeautifulSoup
             soup = BeautifulSoup(html, 'html.parser')
             
             # Find list items
@@ -163,9 +156,6 @@ def scrape_kaggle_search(url, min_upvotes=20, max_pages=30):
                                 upvotes = int(text)
                                 break
                     
-                    # Determine the type based on the URL
-                    result_type = "discussion" if "/discussions/" in link else "unknown"
-                    
                     # Extract discussion ID from the URL
                     discussion_id = None
                     match = re.search(r'/discussions/[^/]+/(\d+)', link)
@@ -176,7 +166,6 @@ def scrape_kaggle_search(url, min_upvotes=20, max_pages=30):
                         'title': title,
                         'link': link,
                         'upvotes': upvotes,
-                        'type': result_type,
                         'id': discussion_id,
                         'page': current_page
                     })
@@ -191,91 +180,31 @@ def scrape_kaggle_search(url, min_upvotes=20, max_pages=30):
             if current_page >= max_pages:
                 print(f"Reached maximum number of pages ({max_pages})")
                 break
-                
-            # Try multiple methods to find and click the pagination controls
+            
+            # Try to find and click the pagination controls
             print("Looking for pagination controls...")
-            
-            # Method 1: Use CSS selector for pagination
             pagination_found = False
+            
+            # First attempt: Use a more focused approach for finding and clicking the ellipsis
             try:
-                # Find all pagination buttons
-                pagination_buttons = driver.find_elements(By.CSS_SELECTOR, "nav[aria-label='pagination navigation'] button")
-                print(f"Found {len(pagination_buttons)} pagination buttons")
+                print("Looking for ellipsis or next page navigation...")
                 
-                # Look for the "Next" button
-                for button in pagination_buttons:
-                    try:
-                        aria_label = button.get_attribute("aria-label")
-                        if aria_label and "next" in aria_label.lower():
-                            print("Found 'Next' button with aria-label")
-                            if button.is_enabled():
-                                print("Clicking 'Next' button...")
-                                driver.execute_script("arguments[0].scrollIntoView(true);", button)
-                                time.sleep(1)
-                                button.click()
-                                pagination_found = True
-                                current_page += 1
-                                time.sleep(5)  # Wait for next page to load
-                                break
-                            else:
-                                print("'Next' button is disabled")
-                                break
-                    except Exception as e:
-                        print(f"Error checking pagination button: {e}")
-            
+                # First check if there's a next button that's enabled
+                next_buttons = driver.find_elements(By.XPATH, "//button[@aria-label='Go to next page']")
+                if next_buttons and len(next_buttons) > 0 and next_buttons[0].is_enabled():
+                    print("Found enabled 'Next' button with aria-label")
+                    driver.execute_script("arguments[0].scrollIntoView(true);", next_buttons[0])
+                    time.sleep(1)
+                    next_buttons[0].click()
+                    pagination_found = True
+                    current_page += 1
+                    time.sleep(5)  # Wait for next page to load
             except Exception as e:
-                print(f"Error with pagination method 1: {e}")
-            
-            # Method 2: Try direct page number buttons if Method 1 failed
-            if not pagination_found:
-                try:
-                    # Look for button with next page number
-                    next_page_button = driver.find_element(By.XPATH, f"//button[text()='{current_page + 1}']")
-                    print(f"Found button for page {current_page + 1}")
-                    driver.execute_script("arguments[0].scrollIntoView(true);", next_page_button)
-                    time.sleep(1)
-                    next_page_button.click()
-                    pagination_found = True
-                    current_page += 1
-                    time.sleep(5)  # Wait for next page to load
-                except Exception as e:
-                    print(f"Error with pagination method 2: {e}")
-            
-            # Method 3: Try finding the "Next" text button
-            if not pagination_found:
-                try:
-                    next_button = driver.find_element(By.XPATH, "//button[.//span[text()='Next']]")
-                    print("Found 'Next' text button")
-                    driver.execute_script("arguments[0].scrollIntoView(true);", next_button)
-                    time.sleep(1)
-                    next_button.click()
-                    pagination_found = True
-                    current_page += 1
-                    time.sleep(5)  # Wait for next page to load
-                except Exception as e:
-                    print(f"Error with pagination method 3: {e}")
-            
-            # Method 4: Last resort - look for any button that might contain "Next"
-            if not pagination_found:
-                try:
-                    buttons = driver.find_elements(By.TAG_NAME, "button")
-                    for button in buttons:
-                        button_text = button.text.lower()
-                        if "next" in button_text:
-                            print(f"Found 'Next' in button text: '{button_text}'")
-                            driver.execute_script("arguments[0].scrollIntoView(true);", button)
-                            time.sleep(1)
-                            button.click()
-                            pagination_found = True
-                            current_page += 1
-                            time.sleep(5)  # Wait for next page to load
-                            break
-                except Exception as e:
-                    print(f"Error with pagination method 4: {e}")
+                print(f"Error with focused pagination approach: {e}")
             
             # If we couldn't find pagination, stop
             if not pagination_found:
-                print("Couldn't find pagination controls, stopping")
+                print("Couldn't find pagination controls or mechanism, stopping")
                 break
         
         # Filter by upvotes and sort
@@ -297,16 +226,9 @@ def scrape_kaggle_search(url, min_upvotes=20, max_pages=30):
 
 if __name__ == "__main__":
     search_url = "https://www.kaggle.com/search?q=data+science+interview+questions"
-    results = scrape_kaggle_search(search_url, min_upvotes=20, max_pages=5)
-    
-    # Print results
-    print(f"\nFound {len(results)} results with >20 upvotes:")
-    for i, result in enumerate(results, 1):
-        print(f"{i}. {result['title']} - {result['upvotes']} upvotes")
-        print(f"   Link: {result['link']}")
-        print()
+    results = scrape_kaggle_search(search_url, min_upvotes=1, max_pages=100)
     
     # Save to CSV
     if results:
-        pd.DataFrame(results).to_csv('kaggle_results.csv', index=False)
-        print(f"Saved {len(results)} results to kaggle_results.csv")
+        pd.DataFrame(results).to_csv('kaggle_sublinks.csv', index=False)
+        print(f"Saved {len(results)} results to kaggle_sublinks.csv")
