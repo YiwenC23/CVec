@@ -11,12 +11,13 @@ from typing import Dict, List
 from loguru import logger as log
 from requests.exceptions import ReadTimeout
 
+
 def parse_search_page(response):
     html = re.findall(r"window.mosaic.providerData\[['\"]mosaic-provider-jobcards['\"]\]=(\{.+?\});", response.content)
     html = json.loads(html[0])
     job_dict = {
         "job_results": html["metaData"]["mosaicProviderJobCardsModel"]["results"],
-            "search_meta": html["metaData"]["mosaicProviderJobCardsModel"]["tierSummaries"],
+        "search_meta": html["metaData"]["mosaicProviderJobCardsModel"]["tierSummaries"],
         }
     return job_dict
 
@@ -115,6 +116,7 @@ async def parse_job_page(response: ScrapeApiResponse):
 async def scrape_jobs(job_keys: List[str]):
     log.info(f"Scraping {len(job_keys)} job positions...")
     job_key_to_url = {}
+    failed_jobKeys = []
     
     if os.path.exists(JOB_DETAILS_FILE):
         all_jobKeys = job_keys.copy()
@@ -148,25 +150,30 @@ async def scrape_jobs(job_keys: List[str]):
                 job_key = job_key_to_url[job_url]
                 job_detail["jobkey"] = job_key
                 jobDetail_scraped.append(job_detail)
+                scraped_num = len(jobDetail_scraped) - len(failed_jobKeys)
+                remaining_num = len(all_jobKeys) - scraped_num
                 
                 with open(JOB_DETAILS_FILE, "w", encoding="utf-8") as f:
                     json.dump(jobDetail_scraped, f, indent=4, ensure_ascii=False)
                 
-                log.info(f"Scraped jobs: {len(jobDetail_scraped)}; Remaining jobs: {len(all_jobKeys) - len(jobDetail_scraped)}")
+                log.info(f"Scraped jobs: {scraped_num}; Failed jobs: {len(failed_jobKeys)}; Remaining jobs: {remaining_num}")
+        
         else:
-            log.error(f"Failed to scrape {result.api_response.config['url']}, got: {result.message}")
+            failed_url = result.headers.get("X-Scrapfly-Upstream-Url")
+            failed_jobKeys.append(job_key_to_url[failed_url])
+            log.error(f"Failed to scrape {failed_url}, got: {result.message}")
             await asyncio.sleep(1)
     
-    log.info(f"Successfully scraped {len(jobDetail_scraped)/len(job_keys)} job positions!")
+    log.info(f"Successfully scraped {len(jobDetail_scraped)}/{len(all_jobKeys)} job positions!")
     return jobDetail_scraped
 
 
 async def main():
     if not os.path.exists(SEARCH_RESULTS_FILE):
         # url = "https://www.indeed.com/jobs?q=Data%20Science"
-        url = "https://www.indeed.com/jobs?q=Data%20Scientist"
+        # url = "https://www.indeed.com/jobs?q=Data%20Scientist"
         # url = "https://www.indeed.com/jobs?q=Data%20Engineer"
-        # url = "https://www.indeed.com/jobs?q=Data%20Analyst"
+        url = "https://www.indeed.com/jobs?q=Data%20Analyst"
         search_results = await scrape_search(url)
         
         with open(SEARCH_RESULTS_FILE, "w", encoding="utf-8") as f:
@@ -178,7 +185,7 @@ async def main():
             
             with open(JOBKEYS_FILE, "w", encoding="utf-8") as f:
                 json.dump(job_keys, f, indent=4, ensure_ascii=False)
-                
+        
         else:
             jobKeys_list = [job["jobkey"] for job in search_results if "jobkey" in job]
             jobKeys_list = list(set(jobKeys_list))
@@ -190,6 +197,7 @@ async def main():
             job_keys.extend(jobKeys_extra)
             with open(JOBKEYS_FILE, "w", encoding="utf-8") as f:
                 json.dump(job_keys, f, indent=4, ensure_ascii=False)
+    
     else:
         with open(JOBKEYS_FILE, "r", encoding="utf-8") as f:
             job_keys = json.load(f)
@@ -216,8 +224,8 @@ if __name__ == "__main__":
     #* File path constants
     BASE_DIR = Path(__file__).resolve().parents[2]
     JOBKEYS_FILE = os.path.join(BASE_DIR, "data/raw_data/data_science/indeed_jobKeys.json")
-    SEARCH_RESULTS_FILE = os.path.join(BASE_DIR, "data/raw_data/data_science/indeed_ds2_search_results.json")
-    JOB_DETAILS_FILE = os.path.join(BASE_DIR, "data/raw_data/data_science/indeed_ds2_jobs_detail.json")
+    SEARCH_RESULTS_FILE = os.path.join(BASE_DIR, "data/raw_data/data_science/indeed_ds4_search_results.json")
+    JOB_DETAILS_FILE = os.path.join(BASE_DIR, "data/raw_data/data_science/indeed_jobs_detail.json")
     
     #* Scrapfly setup
     SCRAPFLY = ScrapflyClient(key=os.environ["SCRAPFLY_API_KEY"])
