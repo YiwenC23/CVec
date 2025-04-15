@@ -57,6 +57,7 @@ def main():
                     "formattedLocation": job_detail.get("formattedLocation"),
                     "salarySnippet": job_search.get("salarySnippet"),
                     "description": job_detail.get("description"),
+                    "subtitle": job_detail.get("subtitle"),
                     "companyOverviewLink": job_detail.get("companyOverviewLink"),
                     "companyImagesModel": {
                         "headerImageUrl": company_images.get("headerImageUrl"),
