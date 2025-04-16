@@ -1,32 +1,44 @@
 ﻿import os
-import torch
-import faiss
-import ollama
 import getpass
 import numpy as np
-from openai import OpenAI
+
+from uuid import uuid4
 from PyPDF2 import PdfReader
 from chonkie import TokenChunker
 from chonkie.embeddings import SentenceTransformerEmbeddings
+from langchain_community.llms import ollama
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.document_loaders import *
+from langchain_qdrant import QdrantVectorStore
+from qdrant_client import QdrantClient
+from qdrant_client.models import VectorParams, Distance
 
-torch.classes.__path__ = []
 
-#* Get the API key from the environment variable, ask for input if not found
-if not os.environ.get("OPENAI_API_KEY"):
-    os.environ["OPENAI_API_KEY"] = getpass.getpass("OpenAI API Key: ")
-client = OpenAI()
+#* Function for loading a list of APIs from the environment
+def load_api():
+    apiKeys = ["OPENAI_API_KEY", "OLLAMA_API_KEY", "ANTHROPIC_API_KEY", 
+            "HUGGINGFACE_API_KEY", "GEMINI_API_KEY", "CLAUDE_API_KEY"]
+    for api in apiKeys:
+        if not os.environ.get(api):
+            os.environ[api] = getpass.getpass(f"Please enter your {api}: ")
 
 
-def extract_pdf_text(pdf_docs):
+#* Function for loading data
+def load_data(docs):
     text = ""
-    for pdf in pdf_docs:
-        pdf_reader = PdfReader(pdf)
-        for page in pdf_reader.pages:
-            text += page.extract_text()
-    
+    for doc in docs:
+        if doc.endswith(".pdf"):
+            loader = PyMuPDFLoader(doc)
+            for page in loader.load():
+                text += page.page_content
+        elif doc.endswith(".json"):
+            loader = JSONLoader(doc)
+            for item in loader.load():
+                text += item.page_content
     return text
 
 
+#* Function for chunking text
 def chunk_text(text):
     chunker = TokenChunker(
         tokenizer = "character",
@@ -39,32 +51,27 @@ def chunk_text(text):
     return chunks
 
 
-def embed_text(text_chunks, emb_model):
-    if emb_model == "text-embedding-3-small":
-        response = client.embeddings.create(
-            input = text_chunks,
-            model = emb_model
-        )
-        embeddings = [item.embedding for item in response.data]
-    elif emb_model == "nomic-embed-text":
-        response = ollama.embed(
-            model = emb_model,
-            input = text_chunks
-        )
-        embeddings = response.embeddings
-    elif emb_model == "nomic-embed-text-v1.5":
-        model = SentenceTransformerEmbeddings("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
-        embeddings = model.embed(text_chunks)
-    else:
-        raise ValueError(f"Model {emb_model} not supported")
+#* Function that defines the vector store of the Qdrant Database
+def create_vectorStore(emb_model):
+    #client = QdrantClient(":memory:")
+    client = QdrantClient(url="http://localhost:6333")
     
-    return embeddings
-
-
-def create_vector_store(embeddings):
-    embeddings_array = np.array(embeddings).astype("float32")
-    vector_dim = embeddings_array.shape[1]
-    vector_store = faiss.IndexFlatL2(vector_dim)
-    vector_store.add(embeddings_array)
+    client.create_collection(
+        collection_name="job_collection",
+        vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
+    )
+    
+    if emb_model == "text-embedding-3-large":
+        vector_store = QdrantVectorStore(
+            client=client,
+            collection_name="job_collection",
+            embedding_function=OpenAIEmbeddings(model="text-embedding-3-large"),
+        )
+    elif emb_model == "nomic-embed-text":
+        vector_store = QdrantVectorStore(
+            client=client,
+            collection_name="job_collection",
+            embedding_function=ollama.embed(model="nomic-embed-text"),
+        )
     
     return vector_store
