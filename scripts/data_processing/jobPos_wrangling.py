@@ -2,6 +2,7 @@
 import json
 
 from pathlib import Path
+from bs4 import BeautifulSoup
 
 
 def load_json_file(file_path: str) -> list:
@@ -41,9 +42,61 @@ def main():
                 job_detail = job_details[j_key]
                 job_search = job_searches[i_key]
                 
-                company_images = job_detail.get("companyImagesModel") if job_detail.get("companyImagesModel") else {}
-                company_review = job_detail.get("companyReviewModel") if job_detail.get("companyReviewModel") else {}
-                ratings_model = company_review.get("ratingsModel") if company_review.get("ratingsModel") else {}
+                company_images = {
+                    "headerImageUrl": None,
+                    "logoUrl": None,
+                }
+                if job_detail.get("companyImagesModel"):
+                    if job_detail["companyImagesModel"].get("headerImageUrl"):
+                        company_images["headerImageUrl"] = job_detail["companyImagesModel"]["headerImageUrl"]
+                    if job_detail["companyImagesModel"].get("logoUrl"):
+                        company_images["logoUrl"] = job_detail["companyImagesModel"]["logoUrl"]
+                
+                company_review = {
+                    "desktopCompanyLink": None,
+                    "reviewCount": None,
+                    "rating": None,
+                }
+                if job_detail.get("companyReviewModel"):
+                    if job_detail["companyReviewModel"].get("desktopCompanyLink"):
+                        company_review["desktopCompanyLink"] = job_detail["companyReviewModel"]["desktopCompanyLink"]
+                    if job_detail["companyReviewModel"].get("ratingsModel"):
+                        if job_detail["companyReviewModel"]["ratingsModel"].get("count"):
+                            company_review["reviewCount"] = job_detail["companyReviewModel"]["ratingsModel"]["count"]
+                        if job_detail["companyReviewModel"]["ratingsModel"].get("rating"):
+                            company_review["rating"] = job_detail["companyReviewModel"]["ratingsModel"]["rating"]
+                
+                salaryInfo = {
+                    "currency": None,
+                    "text": None,
+                    "min": None,
+                    "max": None,
+                    "type": None,
+                }
+                if job_search.get("extractedSalary"):
+                    if job_search["extractedSalary"].get("min"):
+                        salaryInfo["min"] = job_search["extractedSalary"]["min"]
+                    if job_search["extractedSalary"].get("max"):
+                        salaryInfo["max"] = job_search["extractedSalary"]["max"]
+                    if job_search["extractedSalary"].get("type"):
+                        salaryInfo["type"] = job_search["extractedSalary"]["type"]
+                elif job_search.get("salarySnippet"):
+                    if job_search["salarySnippet"].get("currency"):
+                        salaryInfo["currency"] = job_search["salarySnippet"]["currency"]
+                    if job_search["salarySnippet"].get("text"):
+                        salaryInfo["text"] = job_search["salarySnippet"]["text"]
+                
+                remoteWorkModel = {
+                    "text": None,
+                    "type": None,
+                }
+                if job_search.get("remoteWorkModel"):
+                    if job_search["remoteWorkModel"].get("text"):
+                        remoteWorkModel["text"] = job_search["remoteWorkModel"]["text"]
+                    if job_search["remoteWorkModel"].get("type"):
+                        remoteWorkModel["type"] = job_search["remoteWorkModel"]["type"]
+                
+                description = BeautifulSoup(job_detail.get("description"), "html.parser").get_text().lstrip("\n")
                 
                 ds_jobs.append({
                     "companyName": job_detail.get("companyName"),
@@ -51,27 +104,20 @@ def main():
                     "jobkey": i_key,
                     "jobLink": "https://www.indeed.com/viewjob?jk=" + i_key,
                     "jobType": job_detail.get("jobType"),
-                    "remoteWorkModel": job_search.get("remoteWorkModel"),
-                    "jobLocationCity": job_search.get("jobLocationCity"),
-                    "jobLocationState": job_search.get("jobLocationState"),
-                    "formattedLocation": job_detail.get("formattedLocation"),
-                    "salarySnippet": job_search.get("salarySnippet"),
-                    "description": job_detail.get("description"),
+                    "remoteWorkInfo": remoteWorkModel,
+                    "locationInfo": {
+                        "jobLocationCity": job_search.get("jobLocationCity"),
+                        "jobLocationState": job_search.get("jobLocationState"),
+                        "formattedLocation": job_detail.get("formattedLocation"),
+                    },
+                    "salaryInfo": salaryInfo,
+                    "description": description,
                     "subtitle": job_detail.get("subtitle"),
                     "companyOverviewLink": job_detail.get("companyOverviewLink"),
-                    "companyImagesModel": {
-                        "headerImageUrl": company_images.get("headerImageUrl"),
-                        "logoUrl": company_images.get("logoUrl"),
-                    },
+                    "companyImages": company_images,
                     "companyReviewLink": job_detail.get("companyReviewLink"),
-                    "companyReviewModel": {
-                        "desktopCompanyLink": company_review.get("desktopCompanyLink"),
-                        "ratingsModel": {
-                            "count": ratings_model.get("count"),
-                            "rating": ratings_model.get("rating"),
-                        },
-                    },
-                    "highVolumeHiringModel": job_search.get("highVolumeHiringModel"),
+                    "companyReview": company_review,
+                    "highVolumeHiring": job_search.get("highVolumeHiring"),
                     "urgentlyHiring": job_search.get("urgentlyHiring"),
                 })
     
