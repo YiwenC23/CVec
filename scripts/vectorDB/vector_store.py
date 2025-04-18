@@ -1,70 +1,186 @@
 ﻿import os
-import torch
-import faiss
-import ollama
 import getpass
-import numpy as np
+import tiktoken
+import multiprocessing as mp
+
+from pathlib import Path
 from openai import OpenAI
-from PyPDF2 import PdfReader
-from chonkie import TokenChunker
-from chonkie.embeddings import SentenceTransformerEmbeddings
+from functools import partial
+from multiprocessing import Pool
+from chonkie import SentenceChunker
+from uuid import uuid5, NAMESPACE_DNS
+from langchain_community.llms import ollama
+from langchain_community.document_loaders import *
+from qdrant_client import QdrantClient
+from qdrant_client.models import VectorParams, Distance, PointStruct
 
-torch.classes.__path__ = []
 
-#* Get the API key from the environment variable, ask for input if not found
+MAX_TOKENS = 512
+BATCH_SIZE = 100
+
+
+# def load_api():
+#     for api in [
+#         "OPENAI_API_KEY", "OLLAMA_API_KEY", "ANTHROPIC_API_KEY", 
+#         "HUGGINGFACE_API_KEY", "GEMINI_API_KEY", "CLAUDE_API_KEY"
+#     ]:
+#         if not os.environ.get(api):
+#             os.environ[api] = getpass.getpass(f"Please enter your {api}: ")
+
+
 if not os.environ.get("OPENAI_API_KEY"):
     os.environ["OPENAI_API_KEY"] = getpass.getpass("OpenAI API Key: ")
-client = OpenAI()
 
 
-def extract_pdf_text(pdf_docs):
-    text = ""
-    for pdf in pdf_docs:
-        pdf_reader = PdfReader(pdf)
-        for page in pdf_reader.pages:
-            text += page.extract_text()
+def metadata_func(job, metadata):
+    for i in [
+        "companyName", "jobTitle", "jobkey", "jobLink", "jobType", "remoteWorkInfo",
+        "locationInfo", "salaryInfo", "subtitle", "companyOverviewLink", "companyImages",
+        "companyReviewLink", "companyReview", "highVolumeHiring", "urgentlyHiring"
+    ]:
+        metadata[i] = job.get(i)
+    return metadata
+
+
+def input_files(directory: str) -> list[str]:
+    """Return a list of the documents' file paths"""
+    file_paths = []
+    for file in os.listdir(directory):
+        if file.endswith(".pdf") or file.endswith(".json"):
+            file_paths.append(os.path.join(directory, file))
+    return file_paths
+
+
+def load_data(paths: list[str]):
+    """Return a list of the documents' text content"""
+    docs = []
+    for path in paths:
+        if path.endswith(".pdf"):
+            loader = PyMuPDFLoader(
+                file_path = path,
+                extract_tables = True,
+                mode = "page",
+            )
+            docs.extend(loader.load())
+        
+        elif path.endswith(".json"):
+            loader = JSONLoader(
+                file_path = path,
+                jq_schema = ".[]",
+                content_key = "description",
+                metadata_func = metadata_func,
+            )
+            docs.extend(loader.load())
     
-    return text
+    return docs
 
 
-def chunk_text(text):
-    chunker = TokenChunker(
-        tokenizer = "character",
-        chunk_size = 500,
-        chunk_overlap = 100,
-        return_type = "texts"
+def chunk_text(text: str):
+    chunker = SentenceChunker(
+        tokenizer_or_token_counter = tiktoken.get_encoding("cl100k_base"),
+        chunk_size = MAX_TOKENS,
+        chunk_overlap = 128,
+        min_sentences_per_chunk = 1,
+        return_type = "texts",
     )
     chunks = chunker.chunk(text)
     
     return chunks
 
 
-def embed_text(text_chunks, emb_model):
-    if emb_model == "text-embedding-3-small":
+def num_tokens(text: str, model_name: str = "text-embedding-3-large") -> int:
+    """Returns the number of tokens in a text string."""
+    try:
+        encoding = tiktoken.encoding_for_model(model_name)
+    except KeyError:
+        encoding = tiktoken.get_encoding("cl100k_base")
+    num_tokens = len(encoding.encode(text))
+    return num_tokens
+
+
+def get_embeddings(chunks: list[str], model_name: str):
+    client = OpenAI()
+    if model_name == "text-embedding-3-large":
         response = client.embeddings.create(
-            input = text_chunks,
-            model = emb_model
+            input = chunks,
+            model = "text-embedding-3-large",
         )
-        embeddings = [item.embedding for item in response.data]
-    elif emb_model == "nomic-embed-text":
+        embeddings = [i.embedding for i in response.data]
+    
+    elif model_name == "nomic-embed-text":
         response = ollama.embed(
-            model = emb_model,
-            input = text_chunks
+            input = chunks,
+            model = "nomic-embed-text",
         )
         embeddings = response.embeddings
-    elif emb_model == "nomic-embed-text-v1.5":
-        model = SentenceTransformerEmbeddings("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
-        embeddings = model.embed(text_chunks)
-    else:
-        raise ValueError(f"Model {emb_model} not supported")
     
     return embeddings
 
 
-def create_vector_store(embeddings):
-    embeddings_array = np.array(embeddings).astype("float32")
-    vector_dim = embeddings_array.shape[1]
-    vector_store = faiss.IndexFlatL2(vector_dim)
-    vector_store.add(embeddings_array)
+def conn_vectorDB(collection: str):
+    client = QdrantClient(url="http://localhost:6333", headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:138.0) Gecko/20100101 Firefox/138.0"})
+    if collection not in client.get_collections():
+        client.create_collection(
+            collection_name=collection,
+            vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
+        )
+    return client
+
+
+def process_doc(doc, model_name: str) -> list[PointStruct]:
+    points = []
     
-    return vector_store
+    job_key = doc.metadata.get("jobkey")
+    job_id = str(uuid5(NAMESPACE_DNS, job_key))
+    
+    text = doc.page_content
+    payload = metadata_func(doc.metadata, {})
+    
+    if num_tokens(text, model_name) <= MAX_TOKENS:
+        chunks = [text]
+        ids = [job_id]
+    
+    else:
+        chunks = chunk_text(text)
+        ids = [
+            str(uuid5(NAMESPACE_DNS, f"{job_key}-{i}"))
+            for i in range(len(chunks))
+        ]
+    
+    vectors = get_embeddings(chunks, model_name)
+    for pid, vec in zip(ids, vectors):
+        points.append(
+            PointStruct(
+                id = pid,
+                vector = vec,
+                payload = payload,
+            )
+        )
+    
+    return points
+
+
+def parallel_upsert(paths, collection, model_name):
+    docs = load_data(paths)
+    
+    with Pool(processes=mp.cpu_count()) as pool:
+        results = pool.map(partial(process_doc, model_name=model_name), docs)
+    flat_points = [point for points in results for point in points]
+    
+    client = conn_vectorDB(collection)
+    for i in range(0, len(flat_points), BATCH_SIZE):
+        batch = flat_points[i:i+BATCH_SIZE]
+        client.upsert(collection_name=collection, points=batch)
+
+
+if __name__ == "__main__":
+    mp.set_start_method("spawn", force=True)
+    
+    BASE_DIR = Path(__file__).resolve().parents[2]
+    data_dir = os.path.join(BASE_DIR, "data/processed_data")
+    paths = input_files(data_dir)
+    
+    model_name = "text-embedding-3-large"
+    collection = "ds_jobs_parallel"
+    
+    parallel_upsert(paths, collection, model_name)
