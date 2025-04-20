@@ -117,8 +117,8 @@ def get_embeddings(chunks: list[str], model_name: str):
     return embeddings
 
 
-def conn_vectorDB(collection: str):
-    client = QdrantClient(url="http://localhost:6333", headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:138.0) Gecko/20100101 Firefox/138.0"})
+def init_vectorDB(collection: str):
+    client = QdrantClient(url="http://localhost:6333")
     if collection not in client.get_collections():
         client.create_collection(
             collection_name=collection,
@@ -167,7 +167,7 @@ def parallel_upsert(paths, collection, model_name):
         results = pool.map(partial(process_doc, model_name=model_name), docs)
     flat_points = [point for points in results for point in points]
     
-    client = conn_vectorDB(collection)
+    client = init_vectorDB(collection)
     for i in range(0, len(flat_points), BATCH_SIZE):
         batch = flat_points[i:i+BATCH_SIZE]
         client.upsert(collection_name=collection, points=batch)
@@ -177,10 +177,10 @@ if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)
     
     BASE_DIR = Path(__file__).resolve().parents[2]
-    data_dir = os.path.join(BASE_DIR, "data/processed_data")
+    data_dir = os.path.join(BASE_DIR, "data/processed_data/ds_jobs")
     paths = input_files(data_dir)
     
     model_name = "text-embedding-3-large"
-    collection = "ds_jobs_parallel"
+    collection = "ds_jobs"
     
     parallel_upsert(paths, collection, model_name)
