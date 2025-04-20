@@ -8,7 +8,7 @@ from openai import OpenAI
 from functools import partial
 from multiprocessing import Pool
 from chonkie import SentenceChunker
-from uuid import uuid5, NAMESPACE_DNS
+from uuid import uuid4,uuid5, NAMESPACE_DNS
 from langchain_community.llms import ollama
 from langchain_community.document_loaders import *
 from qdrant_client import QdrantClient
@@ -19,17 +19,9 @@ MAX_TOKENS = 512
 BATCH_SIZE = 100
 
 
-# def load_api():
-#     for api in [
-#         "OPENAI_API_KEY", "OLLAMA_API_KEY", "ANTHROPIC_API_KEY", 
-#         "HUGGINGFACE_API_KEY", "GEMINI_API_KEY", "CLAUDE_API_KEY"
-#     ]:
-#         if not os.environ.get(api):
-#             os.environ[api] = getpass.getpass(f"Please enter your {api}: ")
-
-
-if not os.environ.get("OPENAI_API_KEY"):
-    os.environ["OPENAI_API_KEY"] = getpass.getpass("OpenAI API Key: ")
+def load_api(api: str):
+    if not os.environ.get(api):
+        os.environ[api] = getpass.getpass(f"Please enter your {api}: ")
 
 
 def metadata_func(job, metadata):
@@ -54,11 +46,13 @@ def input_files(directory: str) -> list[str]:
 def load_data(paths: list[str]):
     """Return a list of the documents' text content"""
     docs = []
+    paths = [paths] if not isinstance(paths, list) else paths
+    
     for path in paths:
         if path.endswith(".pdf"):
             loader = PyMuPDFLoader(
                 file_path = path,
-                extract_tables = True,
+                extract_tables = False,
                 mode = "page",
             )
             docs.extend(loader.load())
@@ -69,6 +63,12 @@ def load_data(paths: list[str]):
                 jq_schema = ".[]",
                 content_key = "description",
                 metadata_func = metadata_func,
+            )
+            docs.extend(loader.load())
+        
+        elif path.endswith(".docx"):
+            loader = Docx2txtLoader(
+                file_path = path,
             )
             docs.extend(loader.load())
     
@@ -99,8 +99,9 @@ def num_tokens(text: str, model_name: str = "text-embedding-3-large") -> int:
 
 
 def get_embeddings(chunks: list[str], model_name: str):
-    client = OpenAI()
     if model_name == "text-embedding-3-large":
+        load_api("OPENAI_API_KEY")
+        client = OpenAI()
         response = client.embeddings.create(
             input = chunks,
             model = "text-embedding-3-large",
@@ -117,9 +118,9 @@ def get_embeddings(chunks: list[str], model_name: str):
     return embeddings
 
 
-def init_vectorDB(collection: str):
+def init_vectorDB(collection: str = None):
     client = QdrantClient(url="http://localhost:6333")
-    if collection not in client.get_collections():
+    if collection is not None and collection not in client.get_collections():
         client.create_collection(
             collection_name=collection,
             vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
@@ -130,22 +131,31 @@ def init_vectorDB(collection: str):
 def process_doc(doc, model_name: str) -> list[PointStruct]:
     points = []
     
-    job_key = doc.metadata.get("jobkey")
-    job_id = str(uuid5(NAMESPACE_DNS, job_key))
+    if doc.file_path.endswith(".json"):
+        job_key = doc.metadata.get("jobkey")
+        job_id = str(uuid5(NAMESPACE_DNS, job_key))
+        
+        text = doc.page_content
+        payload = metadata_func(doc.metadata, {})
+        
+        if num_tokens(text, model_name) <= MAX_TOKENS:
+            chunks = [text]
+            ids = [job_id]
+        
+        else:
+            chunks = chunk_text(text)
+            ids = [
+                str(uuid5(NAMESPACE_DNS, f"{job_key}-{i}"))
+                for i in range(len(chunks))
+            ]
     
-    text = doc.page_content
-    payload = metadata_func(doc.metadata, {})
-    
-    if num_tokens(text, model_name) <= MAX_TOKENS:
-        chunks = [text]
-        ids = [job_id]
-    
-    else:
+    elif doc.file_path.endswith(".pdf"):
+        doc_id = str(uuid4())
+        text = doc.page_content
+        payload = metadata_func(doc.metadata, {})
+        
         chunks = chunk_text(text)
-        ids = [
-            str(uuid5(NAMESPACE_DNS, f"{job_key}-{i}"))
-            for i in range(len(chunks))
-        ]
+        ids = [doc_id]
     
     vectors = get_embeddings(chunks, model_name)
     for pid, vec in zip(ids, vectors):
@@ -167,10 +177,10 @@ def parallel_upsert(paths, collection, model_name):
         results = pool.map(partial(process_doc, model_name=model_name), docs)
     flat_points = [point for points in results for point in points]
     
-    client = init_vectorDB(collection)
+    qdrant_client = init_vectorDB(collection)
     for i in range(0, len(flat_points), BATCH_SIZE):
         batch = flat_points[i:i+BATCH_SIZE]
-        client.upsert(collection_name=collection, points=batch)
+        qdrant_client.upsert(collection_name=collection, points=batch)
 
 
 if __name__ == "__main__":
