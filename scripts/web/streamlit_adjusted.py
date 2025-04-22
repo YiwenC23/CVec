@@ -16,11 +16,13 @@ import streamlit as st
 # )
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
+# Configures the Streamlit page with several settings
 st.set_page_config(
     page_title="MiniChat", 
     page_icon=":robot_face:", 
     initial_sidebar_state="expanded",
-    layout="wide",  # Set layout to wide to accommodate job panel
+    layout="wide",
     menu_items={
         'Get Help': 'https://www.example.com/help',
         'Report a bug': 'https://www.example.com/bug',
@@ -217,9 +219,8 @@ def delete_conversation_pair(index):
     st.rerun()
 
 
-# Mock function to get job recommendations
+# Mock function to get job recommendations --> will be replaced with actual recommendation algorithm --> subject to change!!!!!
 def get_job_recommendations(num_jobs=5):
-    # This would be replaced with your actual recommendation algorithm
     mock_jobs = [
         {
             "id": 1,
@@ -269,11 +270,12 @@ def get_job_recommendations(num_jobs=5):
     ]
     return mock_jobs
 
-
+# render job card components
 def render_job_card(job):
-    # Calculate the color based on the match score
+    # Sets a color based on the job's match score
     match_color = "green" if job['match_score'] >= 85 else "orange" if job['match_score'] >= 70 else "gray"
     
+    # Creates HTML for a job card with several elements
     html = f"""
     <div class="job-card">
         <div class="job-title">{job['title']}</div>
@@ -283,14 +285,18 @@ def render_job_card(job):
         <div class="job-tags">
     """
     
+    # For each tag in the job's tags array, adds a span element with the "job-tag" class
     for tag in job['tags']:
         html += f'<span class="job-tag">{tag}</span>'
-    
+        
+    # Adds a footer section at the bottom of the card with:
+    #      1. The match score percentage, colored according to the match_color
+    #      2. A "View Details" button that currently just shows an alert (placeholder functionality) --> subject to change!!!!!
     html += f"""
         </div>
         <div style="margin-top: auto; padding-top: 10px;"> <!-- Push to bottom of card -->
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="color: {match_color}; font-weight: bold;">
+                <span style="color: {match_color}; font-weight: bold;"> 
                     {job['match_score']}% Match
                 </span>
                 <button class="job-details-btn" onclick="alert('Job details would open here')">View Details</button>
@@ -302,19 +308,23 @@ def render_job_card(job):
 
 
 def init_chat_history():
+    # Checks if there are existing messages in st.session_state.messages
     if "messages" in st.session_state:
+        # loops through them to get both the index and message content
         for i, message in enumerate(st.session_state.messages):
+            # For assistant messages
             if message["role"] == "assistant":
                 with st.chat_message("assistant", avatar="🤖"):
                     st.markdown(message["content"], unsafe_allow_html=True)
                     
-                    # Add action button below the message content
-                    if st.button("🗑", key=f"delete_{i}"):
+                    # Add action button below the message content to delete information
+                    if st.button("×", key=f"delete_{i}"):
                             st.session_state.messages.pop(i)
                             st.session_state.messages.pop(i - 1)
                             st.session_state.chat_history.pop(i)
                             st.session_state.chat_history.pop(i - 1)
                             st.rerun()
+            # For user messages
             else:
                 st.markdown(f"""
                             <div style='display: flex; justify-content: flex-end;'>
@@ -323,6 +333,7 @@ def init_chat_history():
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
+    # If no messages exist yet, initializes empty lists for both messages and chat_history in the session state
     else:
         st.session_state.messages = []
         st.session_state.chat_history = []
@@ -357,23 +368,25 @@ st.markdown("""
         </style>
             """, unsafe_allow_html=True)
 
-# Keep the model and documents in the same tab
+# Define sidebar for model settings
 st.sidebar.header("Model Settings", divider="gray")
 embedding_model = st.sidebar.selectbox("Choose a Embedding Model:", ["nomic-embed-text", "nomic-embed-text-v1.5", "text-embedding-3-small"], index = 0)
 llm_model = st.sidebar.selectbox("Choose a LLM Model:", ["gemma3:27b-it-q4_K_M", "gpt-4o-mini"], index = 1)
-
+# Define sidebar for document upload
 st.sidebar.header("My Documents", divider="gray")
 pdf_docs = st.sidebar.file_uploader("*Upload your PDFs", accept_multiple_files=True)
 
+# Creates a "Process" button in the sidebar and executes the following code when clicked
 if st.sidebar.button("Process"):
+    # If no PDFs are uploaded, displays a warning message asking the user to upload PDFs first
     if not pdf_docs:
         st.sidebar.warning("Please upload your PDFs first!")
+    # If PDFs are uploaded, proceeds with processing --> subject to change!!!!
     else:
         with st.sidebar:
             sideSP_container = st.empty()
             with sideSP_container.container():
                 with st.spinner("Processing the uploaded PDFs..."):
-                    # Mock function calls since we're focusing on UI only
                     # raw_text = extract_pdf_text(pdf_docs)
                     # text_chunks = chunk_text(raw_text)
                     # embeddings = embed_text(text_chunks, embedding_model)
@@ -381,7 +394,6 @@ if st.sidebar.button("Process"):
                     # st.session_state.text_chunks = text_chunks
                     # st.session_state.vector_store = vector_store
                     
-                    # Add mock delay for demo purposes
                     time.sleep(2)
                     # Set mock session state variables for demo
                     st.session_state.text_chunks = ["Mock text chunk 1", "Mock text chunk 2"]
@@ -403,14 +415,14 @@ def main():
     # Get the show_job_panel value from session state
     show_job_panel = st.session_state.show_job_panel
     
-    # Initialize layout for main content
+    # If the user wants to see the job panel
     if show_job_panel:
         # Create a two-column layout
         cols = st.columns([7, 3])
         main_col = cols[0]
         job_col = cols[1]
         
-        # Adjust the logo to be centered in the main column only
+        # Set up the layout for the main chatbot section
         main_col.markdown(
             f"""
             <div style='display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 20px;'>
@@ -422,12 +434,13 @@ def main():
                 </div>
             </div>
             """, unsafe_allow_html=True)
+    # If the user does not want to see the job panel
     else:
         # Use the full width
         main_col = st
         job_col = None
         
-        # Display the slogan centered across the full page
+        # Set up the layout for the main chatbot section
         st.markdown(
             f"""
             <div style='display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 20px;'>
@@ -476,13 +489,60 @@ def main():
             }
         </style>
     """, unsafe_allow_html=True)
-    
-    # Add vertical space to push chat to bottom, but not as much as before
-    # since we're controlling scrolling with CSS
-    main_col.markdown("<div style='height: 80vh;'></div>", unsafe_allow_html=True)
-    
+
     # Create a container for chat history that will appear above the input
     chat_history_container = main_col.container()
+
+    # Add CSS to ensure the input box is always at the bottom regardless of layout
+    st.markdown("""
+        <style>
+            /* Make the main app container take full height */
+            [data-testid="stAppViewContainer"] {
+                height: 100vh;
+            }
+            
+            /* Ensure content area fills available space */
+            .main .block-container {
+                display: flex;
+                flex-direction: column;
+                height: calc(100vh - 80px);
+                overflow: hidden;
+            }
+            
+            /* Fix chat input at the bottom with proper layout adaptation */
+            .stChatInput {
+                position: fixed !important;
+                bottom: 20px !important;
+                z-index: 1000 !important;
+                background: white !important;
+                padding: 10px !important;
+            }
+        
+            /* When in full width mode (no job panel) */
+            .stApp:not(:has([data-testid="column"][data-column-index="1"])) .stChatInput {
+                width: 90% !important;
+                max-width: 1200px !important;
+            }
+            
+            /* When sidebar is expanded but job panel is hidden */
+            .stApp:has(.stSidebar [data-testid="stSidebarContent"]):not(:has([data-testid="column"][data-column-index="1"])) .stChatInput {
+                width: calc(90% - 260px) !important; /* Adjust the width to account for sidebar width */
+                max-width: 900px !important;
+            }
+            
+            /* Add padding to prevent content being hidden behind input */
+            .block-container, [data-testid="column"] {
+                padding-bottom: 70px !important;
+            }
+            
+            /* Make chat history container scrollable */
+            .stVerticalBlock {
+                overflow-y: auto !important;
+                max-height: calc(100vh - 200px) !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+    
     
     # Show chat history in the main column
     with chat_history_container:
@@ -498,7 +558,6 @@ def main():
         """, unsafe_allow_html=True)
         
         # Display messages in reverse order (newest at the bottom)
-        # Only show the last 6 messages to keep the UI clean
         messages_to_show = messages[-6:] if len(messages) > 6 else messages
         
         for i, message in enumerate(messages_to_show):
@@ -507,6 +566,7 @@ def main():
                 # Display assistant messages on the left
                 with st.chat_message("assistant", avatar="🤖"):
                     st.markdown(message["content"], unsafe_allow_html=True)
+                    # Using "×" character for delete button
                     if st.button("×", key=f"delete_{actual_index}"):
                         if actual_index > 0 and messages[actual_index-1]["role"] == "user":
                             st.session_state.messages.pop(actual_index)
@@ -542,7 +602,6 @@ def main():
         if "vector_store" not in st.session_state:
             assistant_answer = "Please upload and process PDFs first!"
         else:
-            # Mock conversation response for UI demo
             assistant_answer = f"This is a mock response to your query: '{prompt}'"
             # In the real implementation, you would call your conversation_chain function:
             # assistant_answer = conversation_chain(
@@ -565,8 +624,6 @@ def main():
         st.rerun()
     
     # Job recommendations in the right column
-    # These are displayed based on the context of the conversation,
-    # not based on sidebar filters since we removed those
     if show_job_panel and job_col is not None:
         job_col.markdown("<div class='job-panel-header'>📝 Job Recommendations</div>", unsafe_allow_html=True)
         
