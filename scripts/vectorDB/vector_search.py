@@ -3,7 +3,7 @@ import sys
 import pprint as pp
 
 from pathlib import Path
-from vector_store import *
+from .vector_store import *
 from collections import Counter
 from qdrant_client import models
 
@@ -23,8 +23,8 @@ def vector_search(embeddings: list[list[float]], collection: str = "ds_jobs", k:
             query = embedding,
             query_filter = models.Filter(should = [
                 models.FieldCondition(
-                    key = "locationInfo.jobLocationState",
-                    match = models.MatchValue(value="CA")
+                    key = "jobType",
+                    match = models.MatchValue(value="Full-time")
                 )
             ]),
             limit = k,
