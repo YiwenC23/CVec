@@ -6,14 +6,14 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-# from vectorDB import VectorDB
-# from vector_store import (
-#     extract_pdf_text,
-#     chunk_text,
-#     embed_text,
-#     create_vector_store,
-#     client
-# )
+#* Add the parent directory to the Python path
+__package__ = "scripts"
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+#* Import modules
+from models.resume_prompt import prompts, get_completion
+from vectorDB.vector_store import load_data
+from vectorDB.vector_search import process_resume, vector_search
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
