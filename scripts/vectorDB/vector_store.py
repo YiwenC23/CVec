@@ -15,7 +15,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance, PointStruct
 
 
-MAX_TOKENS = 512
+MAX_TOKENS = 230
 BATCH_SIZE = 100
 
 
@@ -55,7 +55,10 @@ def load_data(paths: list[str]):
                 extract_tables = False,
                 mode = "page",
             )
-            docs.extend(loader.load())
+            loaded_docs = loader.load()
+            for doc in loaded_docs:
+                doc.metadata["file_type"] = "pdf"
+            docs.extend(loaded_docs)
         
         elif path.endswith(".json"):
             loader = JSONLoader(
@@ -64,13 +67,19 @@ def load_data(paths: list[str]):
                 content_key = "description",
                 metadata_func = metadata_func,
             )
-            docs.extend(loader.load())
+            loaded_docs = loader.load()
+            for doc in loaded_docs:
+                doc.metadata["file_type"] = "json"
+            docs.extend(loaded_docs)
         
         elif path.endswith(".docx"):
             loader = Docx2txtLoader(
                 file_path = path,
             )
-            docs.extend(loader.load())
+            loaded_docs = loader.load()
+            for doc in loaded_docs:
+                doc.metadata["file_type"] = "docx"
+            docs.extend(loaded_docs)
     
     return docs
 
@@ -130,13 +139,15 @@ def init_vectorDB(collection: str = None):
 
 def process_doc(doc, model_name: str) -> list[PointStruct]:
     points = []
+    file_type = doc.metadata.get("file_type")
     
-    if doc.file_path.endswith(".json"):
+    if file_type == "json":
         job_key = doc.metadata.get("jobkey")
         job_id = str(uuid5(NAMESPACE_DNS, job_key))
         
         text = doc.page_content
         payload = metadata_func(doc.metadata, {})
+        payload["jobDescription"] = text
         
         if num_tokens(text, model_name) <= MAX_TOKENS:
             chunks = [text]
@@ -149,7 +160,7 @@ def process_doc(doc, model_name: str) -> list[PointStruct]:
                 for i in range(len(chunks))
             ]
     
-    elif doc.file_path.endswith(".pdf"):
+    elif file_type == "pdf":
         doc_id = str(uuid4())
         text = doc.page_content
         payload = metadata_func(doc.metadata, {})
