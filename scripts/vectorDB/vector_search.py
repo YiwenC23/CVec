@@ -3,7 +3,7 @@ import sys
 import pprint as pp
 
 from pathlib import Path
-from .vector_store import *
+from vector_store import *
 from collections import Counter
 from qdrant_client import models
 
@@ -35,7 +35,19 @@ def vector_search(embeddings: list[list[float]], collection: str = "ds_jobs", k:
     for match in all_matches:
         all_points.extend(match[1])
     
-    job_counter = Counter([point.id for point in all_points])
+    base_job_ids = []
+    for point in all_points:
+        point_id = point.id
+        if "-" in point_id:
+            parts = point_id.rsplit("-", 1)
+            if parts[1].isdigit():
+                base_job_ids.append(parts[0])
+            else:
+                base_job_ids.append(point_id)
+        else:
+            base_job_ids.append(point_id)
+    
+    job_counter = Counter(base_job_ids)
     top_jobIDs = [job_id for job_id, _ in job_counter.most_common(10)]
     
     top_jobs = qdrant_client.retrieve(
@@ -49,19 +61,18 @@ def vector_search(embeddings: list[list[float]], collection: str = "ds_jobs", k:
 def format_job_results(top_jobs: list[PointStruct]):
     for i, job in enumerate(top_jobs):
         print(f"Matched Job #{i+1}")
-        print(f"Job Title: {job.payload.get('jobTitle')}")
-        print(f"Company: {job.payload.get('companyName')}")
-        print(f"Salary: {job.payload.get('salaryInfo.min')}-{job.payload.get('salaryInfo.max')} {job.payload.get('salaryInfo.type')}")
-        print(f"Job Type: {job.payload.get('jobType')}")
-        print(f"Work Arrangement: {job.payload.get('remoteWorkInfo.text')}")
-        print(f"Location: {job.payload.get('locationInfo.jobLocationCity')}, {job.payload.get('locationInfo.jobLocationState')}")
+        print(f"Job Title: {job.payload.get('jobTitle', 'N/A')}")
+        print(f"Company: {job.payload.get('companyName', 'N/A')}")
+        print(f"Job Type: {job.payload.get('jobType', 'N/A')}")
+        print(f"Job Link: {job.payload.get('jobLink', 'N/A')}")
+        print(f"Job Description: \n {job.payload.get('jobDescription', 'N/A')[:1000]} \n ...")
         print("-" * 50)
 
 
 if __name__ == "__main__":
     BASE_DIR = Path(__file__).resolve().parents[2]
     
-    resume_path = "/Users/yiwen/Desktop/Resume_Yiwen.docx"
+    resume_path = "/Users/yiwen/Desktop/resume_yiwen.pdf"
     model_name = "text-embedding-3-large"
     collection = "ds_jobs"
     k = 10
