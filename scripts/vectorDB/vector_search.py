@@ -1,9 +1,5 @@
-﻿import os
-import sys
-import pprint as pp
-
-from pathlib import Path
-from vector_store import *
+﻿from pathlib import Path
+from .vector_store import *
 from collections import Counter
 from qdrant_client import models
 
@@ -13,53 +9,53 @@ def process_resume(path: str, model_name: str):
     resume_embeddings = get_embeddings(resume[0].page_content, model_name)
     return resume_embeddings
 
-def vector_search(embeddings: list[list[float]], collection: str = "ds_jobs", k: int = 10):
+
+def vector_search(embeddings: list[list[float]], collection: str = "ds_jobs", k: int = 100000):
     qdrant_client = init_vectorDB()
     
-    all_matches = []
-    for embedding in embeddings:
-        chunk_results = qdrant_client.query_points(
-            collection_name = collection,
-            query = embedding,
-            query_filter = models.Filter(should = [
-                models.FieldCondition(
-                    key = "jobType",
-                    match = models.MatchValue(value="Full-time")
-                )
-            ]),
-            limit = k,
-        )
-        all_matches.extend(chunk_results)
+    result = qdrant_client.query_points_groups(
+        collection_name = collection,
+        query = embeddings[0],
+        group_by = "jobkey",
+        limit = k,
+        with_payload = True,
+        query_filter = models.Filter(should = [
+            models.FieldCondition(
+                key = "jobType",
+                match = models.MatchValue(value="Full-time")
+            )
+        ])
+    )
     
-    all_points = []
-    for match in all_matches:
-        all_points.extend(match[1])
+    job_scores = {}
+    for group in result.groups:
+        group_id = group.id
+        if group_id not in job_scores:
+            job_scores[group_id] = {}
+        for point in group.hits:
+            point_id = point.id
+            score = point.score
+            job_scores[group_id][point_id] = score
     
-    base_job_ids = []
-    for point in all_points:
-        point_id = point.id
-        if "-" in point_id:
-            parts = point_id.rsplit("-", 1)
-            if parts[1].isdigit():
-                base_job_ids.append(parts[0])
-            else:
-                base_job_ids.append(point_id)
-        else:
-            base_job_ids.append(point_id)
+    ranked_pairs = []
+    for jobKey in job_scores:
+        scores = job_scores[jobKey]
+        max_jobID = max(scores, key=scores.get)
+        ranked_pairs.append((jobKey, max_jobID, scores[max_jobID]))
     
-    job_counter = Counter(base_job_ids)
-    top_jobIDs = [job_id for job_id, _ in job_counter.most_common(10)]
+    ranked_pairs.sort(key=lambda x: x[2], reverse=True)
+    ranked_jobIDs = [job_id for _, job_id, _ in ranked_pairs]
     
     top_jobs = qdrant_client.retrieve(
-        collection_name = "ds_jobs",
-        ids = top_jobIDs,
+        collection_name = collection,
+        ids = ranked_jobIDs,
     )
     
     return top_jobs
 
 
 def format_job_results(top_jobs: list[PointStruct]):
-    for i, job in enumerate(top_jobs):
+    for i, job in enumerate(top_jobs[:10]):
         print(f"Matched Job #{i+1}")
         print(f"Job Title: {job.payload.get('jobTitle', 'N/A')}")
         print(f"Company: {job.payload.get('companyName', 'N/A')}")
@@ -75,8 +71,7 @@ if __name__ == "__main__":
     resume_path = "/Users/yiwen/Desktop/resume_yiwen.pdf"
     model_name = "text-embedding-3-large"
     collection = "ds_jobs"
-    k = 10
     
     resume_embeddings = process_resume(resume_path, model_name)
-    top_jobs = vector_search(resume_embeddings, collection, k)
+    top_jobs = vector_search(resume_embeddings, collection)
     format_job_results(top_jobs)
