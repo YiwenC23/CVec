@@ -4,10 +4,11 @@ from collections import Counter
 from qdrant_client import models
 
 
-def process_resume(path: str, model_name: str):
-    resume = load_data(path)
-    resume_embeddings = get_embeddings(resume[0].page_content, model_name)
-    return resume_embeddings
+def process_resume(file, model_name: str="text-embedding-3-large"):
+    resume = load_data(file)
+    resume_content = resume[0].page_content
+    resume_embeddings = get_embeddings(resume_content, model_name)
+    return resume_content, resume_embeddings
 
 
 def vector_search(embeddings: list[list[float]], collection: str = "ds_jobs", k: int = 100000):
