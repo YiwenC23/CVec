@@ -1,5 +1,5 @@
 ﻿import streamlit as st
-from models import resume_prompt as rp
+from prompts import resume_prompt as rp
 
 with st.sidebar:
     openai_api_key = st.text_input("OpenAI API Key", key="resume_qa_api_key", type="password")

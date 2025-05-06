@@ -11,7 +11,7 @@ __package__ = "scripts"
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 #* Import modules
-from models.resume_prompt import prompts, get_completion
+from prompts.resume_prompt import resume_prompt, get_completion
 from vectorDB.vector_store import load_data
 from vectorDB.vector_search import process_resume, vector_search
 
