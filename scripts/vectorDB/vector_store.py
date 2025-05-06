@@ -1,6 +1,7 @@
 ﻿import os
 import getpass
 import tiktoken
+import tempfile
 import multiprocessing as mp
 
 from pathlib import Path
@@ -43,10 +44,22 @@ def input_files(directory: str) -> list[str]:
     return file_paths
 
 
-def load_data(paths: list[str]):
+def load_data(file_input):
     """Return a list of the documents' text content"""
     docs = []
-    paths = [paths] if not isinstance(paths, list) else paths
+    
+    #? Check if the files are inputted from local or from streamlit
+    if isinstance(file_input, str) or isinstance(file_input, list):
+        paths = [file_input] if not isinstance(file_input, list) else file_input
+    
+    else:
+        file_name = file_input.name
+        file_extension = file_name.split(".")[-1].lower()
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_extension}") as temp_file:
+            temp_file.write(file_input.getvalue())
+            temp_path = temp_file.name
+            paths = [temp_path]
     
     for path in paths:
         if path.endswith(".pdf"):
@@ -80,6 +93,10 @@ def load_data(paths: list[str]):
             for doc in loaded_docs:
                 doc.metadata["file_type"] = "docx"
             docs.extend(loaded_docs)
+    
+    #? Check if the temp file is still exists, clean up if it does
+    if os.path.exists(temp_path):
+        os.unlink(temp_path)
     
     return docs
 
