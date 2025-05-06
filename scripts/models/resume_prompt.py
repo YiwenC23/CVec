@@ -1,22 +1,7 @@
-﻿import os
-import sys
-import getpass
-
-from pathlib import Path
-from openai import OpenAI
-
-__package__ = "scripts"
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from vectorDB.vector_search import process_resume, vector_search
-from vectorDB.vector_store import load_data
-
-if not os.environ.get("OPENAI_API_KEY"):
-    os.environ["OPENAI_API_KEY"] = getpass.getpass("Please enter your OPENAI_API_KEY: ")
-
-client = OpenAI()
+﻿from openai import OpenAI
 
 
-def prompts(job_description, resume_content):
+def resume_prompt(job_description, resume_content):
     resume_prompt = [
         {
             "role": "developer",
@@ -45,14 +30,8 @@ def prompts(job_description, resume_content):
     return resume_prompt
 
 
-# mock_interview_prompt = [
-#     {
-#         "role": "developer",
-#     }
-# ]
-
-
-def get_completion(messages, model="gpt-4o", stream=False):
+def get_completion(api_key, messages, model="gpt-4o", stream=False):
+    client = OpenAI(api_key)
     response = client.chat.completions.create(
         model=model,
         stream=stream,
@@ -60,37 +39,7 @@ def get_completion(messages, model="gpt-4o", stream=False):
         messages=messages,
         temperature=0.2,
         top_p=0.95,
-        max_tokens=500,
+        max_tokens=1024,
     )
     
     return response.choices[0].message.content
-
-
-def main():
-    resume_path = "/Users/yiwen/Desktop/Resume_Yiwen.docx"
-    model_name = "text-embedding-3-large"
-    collection = "ds_jobs"
-    k = 10
-    
-    resume_embeddings = process_resume(resume_path, model_name)
-    top_jobs = vector_search(resume_embeddings, collection, k)
-    
-    #? Get first job from top_jobs for testing
-    job = top_jobs[0]
-    
-    #? Get job description from job
-    job_description = job.payload.get("jobDescription")
-    
-    resume = load_data(resume_path)
-    resume_content = resume[0].page_content
-    
-    #? Get completion
-    messages = prompts(job_description, resume_content)
-    completion = get_completion(messages)
-    
-    print(completion)
-
-if __name__ == "__main__":
-    BASE_DIR = Path(__file__).resolve().parents[2]
-    
-    main()
