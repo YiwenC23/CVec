@@ -101,7 +101,7 @@ def main():
                 ds_jobs.append({
                     "companyName": job_detail.get("companyName"),
                     "jobTitle": job_detail.get("jobTitle"),
-                    "jobkey": i_key,
+                    "jobKey": i_key,
                     "jobLink": "https://www.indeed.com/viewjob?jk=" + i_key,
                     "jobType": job_detail.get("jobType"),
                     "remoteWorkInfo": remoteWorkModel,
@@ -121,7 +121,7 @@ def main():
                     "urgentlyHiring": job_search.get("urgentlyHiring"),
                 })
     
-    ds_jobs.sort(key=lambda r: r["jobkey"])
+    ds_jobs.sort(key=lambda r: r["jobKey"])
     
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(ds_jobs, f, indent=4, ensure_ascii=False)
