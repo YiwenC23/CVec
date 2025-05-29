@@ -96,12 +96,10 @@ def main():
                     if job_search["remoteWorkModel"].get("type"):
                         remoteWorkModel["type"] = job_search["remoteWorkModel"]["type"]
                 
-                description = BeautifulSoup(job_detail.get("description"), "html.parser").get_text().lstrip("\n")
-                
                 ds_jobs.append({
                     "companyName": job_detail.get("companyName"),
                     "jobTitle": job_detail.get("jobTitle"),
-                    "jobKey": i_key,
+                    "jobkey": i_key,
                     "jobLink": "https://www.indeed.com/viewjob?jk=" + i_key,
                     "jobType": job_detail.get("jobType"),
                     "remoteWorkInfo": remoteWorkModel,
@@ -111,7 +109,7 @@ def main():
                         "formattedLocation": job_detail.get("formattedLocation"),
                     },
                     "salaryInfo": salaryInfo,
-                    "description": description,
+                    "description": job_detail.get("description"),
                     "subtitle": job_detail.get("subtitle"),
                     "companyOverviewLink": job_detail.get("companyOverviewLink"),
                     "companyImages": company_images,
@@ -121,7 +119,7 @@ def main():
                     "urgentlyHiring": job_search.get("urgentlyHiring"),
                 })
     
-    ds_jobs.sort(key=lambda r: r["jobKey"])
+    ds_jobs.sort(key=lambda r: r["jobkey"])
     
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(ds_jobs, f, indent=4, ensure_ascii=False)

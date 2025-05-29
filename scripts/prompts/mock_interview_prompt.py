@@ -11,31 +11,26 @@ if not os.environ.get("OPENAI_API_KEY"):
 client = OpenAI()
 
 
-def mockInterview_prompt():
-    mock_interview_prompt = [
-        {
-            "role": "developer",
-            "content": """
-                You are a professional Human Resource Manager. Based on the job description,
-                you are responsible for reviewing the resume of a candidate and providing feedback on the candidate's resume.
+def get_default_instructions(resume_content, job_description):
+    interview_prompt = f"""
+                You are conducting the live mock interview.
+                
+                Here is my resume:
+                {resume_content}
+                
+                Here is the job description:
+                {job_description}
+                
+                Your task is to conduct a mock interview with the candidate following the instructions below.
+                
+                Style & rules:
+                    • Speak directly to the candidate using *second-person* pronouns ("you"), **never** their name.
+                    • Ask ONE question at a time and finish the full question before pausing.
+                    • After asking, go silent and wait until the candidate explicitly finished the question.
+                    • Do not interrupt or proceed to the next question before that cue.
+                    • After the "Done" cue, give a brief (≤ 40 words) constructive comment
+                        (strength & improvement) and then ask the next question.
+                    • Keep each interviewer turn ≤ 120 words and do **not** reveal internal
+                        scoring, rubric or hidden rationale.
             """
-        },
-        {
-            "role": "user",
-            "content": """
-            """
-        }
-    ]
-    
-    return mock_interview_prompt
-
-
-def get_completion(messages, model="gpt-4o-realtime-preview-2024-12-17", stream=True):
-    response = client.chat.completions.create(
-        model=model,
-        stream=stream,
-        modalities=["text"],
-        messages=messages,
-    )
-    
-    return response.choices[0].message.content
+    return interview_prompt

@@ -8,6 +8,7 @@ from pathlib import Path
 from openai import OpenAI
 from functools import partial
 from multiprocessing import Pool
+from bs4 import BeautifulSoup, Tag
 from chonkie import SentenceChunker
 from uuid import uuid4,uuid5, NAMESPACE_DNS
 from langchain_community.llms import ollama
@@ -47,19 +48,22 @@ def input_files(directory: str) -> list[str]:
 def load_data(file_input):
     """Return a list of the documents' text content"""
     docs = []
+    temp_status = False
+    temp_path = None
     
     #? Check if the files are inputted from local or from streamlit
-    if isinstance(file_input, str) or isinstance(file_input, list):
-        paths = [file_input] if not isinstance(file_input, list) else file_input
+    if isinstance(file_input, (str, list)):
+        paths = file_input if isinstance(file_input, list) else [file_input]
     
     else:
+        temp_status = True
         file_name = file_input.name
-        file_extension = file_name.split(".")[-1].lower()
+        ext = Path(file_name).suffix.lower()
         
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_extension}") as temp_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
             temp_file.write(file_input.getvalue())
             temp_path = temp_file.name
-            paths = [temp_path]
+        paths = [temp_path]
     
     for path in paths:
         if path.endswith(".pdf"):
@@ -95,7 +99,7 @@ def load_data(file_input):
             docs.extend(loaded_docs)
     
     #? Check if the temp file is still exists, clean up if it does
-    if os.path.exists(temp_path):
+    if temp_status and temp_path and os.path.exists(temp_path):
         os.unlink(temp_path)
     
     return docs
@@ -164,14 +168,21 @@ def process_doc(doc, model_name: str) -> list[PointStruct]:
         
         text = doc.page_content
         payload = metadata_func(doc.metadata, {})
-        payload["jobDescription"] = text
+        soup = BeautifulSoup(text, "html.parser")
         
-        if num_tokens(text, model_name) <= MAX_TOKENS:
-            chunks = [text]
+        for br in soup.find_all("br"):
+            while isinstance(br.next_sibling, Tag) and br.next_sibling.name == "br":
+                br.next_sibling.extract()
+        
+        payload["jobDescription"] = soup.prettify()
+        desc_text = soup.get_text(separator="\n", strip=True)
+        
+        if num_tokens(desc_text, model_name) <= MAX_TOKENS:
+            chunks = [desc_text]
             ids = [job_id]
         
         else:
-            chunks = chunk_text(text)
+            chunks = chunk_text(desc_text)
             ids = [
                 str(uuid5(NAMESPACE_DNS, f"{job_key}-{i}"))
                 for i in range(len(chunks))

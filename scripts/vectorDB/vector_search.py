@@ -1,7 +1,11 @@
-﻿from pathlib import Path
+﻿from typing import List
+from pathlib import Path
+from loguru import logger
 from .vector_store import *
-from collections import Counter
 from qdrant_client import models
+
+
+qdrant_client = init_vectorDB()
 
 
 def process_resume(file, model_name: str="text-embedding-3-large"):
@@ -11,48 +15,67 @@ def process_resume(file, model_name: str="text-embedding-3-large"):
     return resume_content, resume_embeddings
 
 
-def vector_search(embeddings: list[list[float]], collection: str = "ds_jobs", k: int = 100000):
-    qdrant_client = init_vectorDB()
+def search_filter(filter_dict: dict):
+    key_map = {
+        "filter_job_type": "jobType",
+        "filter_state": "locationInfo.jobLocationState",
+        "filter_city": "locationInfo.jobLocationCity",
+    }
     
-    result = qdrant_client.query_points_groups(
-        collection_name = collection,
-        query = embeddings[0],
-        group_by = "jobkey",
-        limit = k,
-        with_payload = True,
-        query_filter = models.Filter(should = [
-            models.FieldCondition(
-                key = "jobType",
-                match = models.MatchValue(value="Full-time")
-            )
-        ])
-    )
+    query_filter = models.Filter(must = [])
+    for key, value in filter_dict.items():
+        if key == "filter_city" and value == "Bay Area":
+            value = "San Francisco Bay Area"
+        if value is not None:
+            search_key = key_map.get(key)
+            if search_key:
+                query_filter.must.append(
+                    models.FieldCondition(
+                        key = search_key,
+                        match = models.MatchValue(value=value)
+                    )
+                )
     
-    job_scores = {}
-    for group in result.groups:
-        group_id = group.id
-        if group_id not in job_scores:
-            job_scores[group_id] = {}
-        for point in group.hits:
-            point_id = point.id
-            score = point.score
-            job_scores[group_id][point_id] = score
+    return query_filter
+
+def vector_search(embeddings: list[list[float]], filter_dict: dict, collection: str = "ds_jobs", k: int = 300):
+    try:
+        result = qdrant_client.query_points_groups(
+            collection_name = collection,
+            query = embeddings[0],
+            group_by = "jobkey",
+            limit = k,
+            query_filter = search_filter(filter_dict),
+            with_payload = True,
+        )
     
-    ranked_pairs = []
-    for jobKey in job_scores:
-        scores = job_scores[jobKey]
-        max_jobID = max(scores, key=scores.get)
-        ranked_pairs.append((jobKey, max_jobID, scores[max_jobID]))
-    
-    ranked_pairs.sort(key=lambda x: x[2], reverse=True)
-    ranked_jobIDs = [job_id for _, job_id, _ in ranked_pairs]
-    
-    top_jobs = qdrant_client.retrieve(
-        collection_name = collection,
-        ids = ranked_jobIDs,
-    )
-    
-    return top_jobs
+        job_scores = {}
+        for group in result.groups:
+            group_id = group.id
+            if group_id not in job_scores:
+                job_scores[group_id] = {}
+            for point in group.hits:
+                point_id = point.id
+                score = point.score
+                job_scores[group_id][point_id] = score
+        
+        ranked_pairs = []
+        for jobKey in job_scores:
+            scores = job_scores[jobKey]
+            max_jobID = max(scores, key=scores.get)
+            ranked_pairs.append((jobKey, max_jobID, scores[max_jobID]))
+        
+        ranked_pairs.sort(key=lambda x: x[2], reverse=True)
+        ranked_jobIDs = [job_id for _, job_id, _ in ranked_pairs]
+        
+        top_jobs = qdrant_client.retrieve(
+            collection_name = collection,
+            ids = ranked_jobIDs,
+        )
+        return top_jobs
+
+    except Exception as e:
+        logger.error(f"Error: {e}")
 
 
 def format_job_results(top_jobs: list[PointStruct]):
@@ -73,6 +96,6 @@ if __name__ == "__main__":
     model_name = "text-embedding-3-large"
     collection = "ds_jobs"
     
-    resume_embeddings = process_resume(resume_path, model_name)
-    top_jobs = vector_search(resume_embeddings, collection)
+    resume_embeddings = process_resume(resume_path)
+    top_jobs = vector_search(resume_embeddings)
     format_job_results(top_jobs)

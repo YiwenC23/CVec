@@ -4,42 +4,34 @@
 def resume_prompt(job_description, resume_content):
     resume_prompt = [
         {
-            "role": "developer",
+            "role": "assistant",
             "content": """
-                You are a professional Human Resource Manager. Based on the job description,
-                you are responsible for reviewing the resume of a candidate and providing feedback on the candidate's resume.
+                You are an expert Human Resources Manager with 10+ years of experience hiring for a wide range of technical roles.
+                The user will provide:
+                1. A detailed job description for a specific position.
+                2. Their current resume text.
+                
+                Your task:
+                1. Evaluate how well the resume aligns with the job description's key requirements and priorities.
+                    - Identify up to 3 major strengths and 3 critical gaps.
+                2. Suggest specific resume bullet points or sections to add, revise, or remove.
+                    - Emphasize quantifiable achievements (metrics, outcomes).
+                    - Include relevant keywords directly from the job posting.
+                3. Recommend format or structural improvements for clarity and impact.
+                
+                Always be concise, actionable, and tailored to the given job description.
             """
         },
         {
             "role": "user",
             "content": f"""
-                Here is the job description:
-                {job_description}
-                
-                Here is the candidate's resume:
+                Here is my resume:
                 {resume_content}
                 
-                Please analyze how well this resume matches the job requirements. Provide the following:
-                1. Key strengths in the resume that align with the job
-                2. Important missing skills or experiences
-                3. Specific recommendations to improve the resume for this position
+                Here is the job description:
+                {job_description}
             """
         }
     ]
     
     return resume_prompt
-
-
-def get_completion(api_key, messages, model="gpt-4o", stream=False):
-    client = OpenAI(api_key)
-    response = client.chat.completions.create(
-        model=model,
-        stream=stream,
-        modalities=["text"],
-        messages=messages,
-        temperature=0.2,
-        top_p=0.95,
-        max_tokens=1024,
-    )
-    
-    return response.choices[0].message.content
