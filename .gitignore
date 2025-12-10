@@ -5,6 +5,7 @@
 # directories
 __pycache__
 .vscode
+.venv
 data
 test
 

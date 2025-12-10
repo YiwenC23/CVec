@@ -1,7 +1,7 @@
 ﻿import os
 from pydantic import BaseModel
 from openai import AsyncOpenAI
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Literal
 from agents import (
     Agent,
     Runner,
@@ -18,7 +18,6 @@ from openai.types.responses import ResponseTextDeltaEvent
 from agents.items import ReasoningItem, ItemHelpers
 
 
-set_default_openai_api(os.environ["OPENAI_API_KEY"])
 client = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 set_default_openai_client(client)
 set_tracing_disabled(False)
