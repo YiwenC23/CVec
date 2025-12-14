@@ -9,7 +9,7 @@ from openai import OpenAI
 from functools import partial
 from multiprocessing import Pool
 from bs4 import BeautifulSoup, Tag
-from chonkie import SentenceChunker
+from chonkie.cloud import SentenceChunker
 from uuid import uuid4,uuid5, NAMESPACE_DNS
 from langchain_community.llms import ollama
 from langchain_community.document_loaders import *
